@@ -34,23 +34,61 @@ report_template = PromptTemplate(
 )
 
 from langchain.memory import ConversationBufferMemory
-# We use the ConversationBufferMemory to store a history of the conversation
-memory = ConversationBufferMemory(input_key='findings', memory_key='chat_history')
+memory = ConversationBufferMemory()
+memory.chat_memory.add_user_message('''
+                                    Description: I found a SQL Injection Vulnerability on the search page.
+                                    
+                                    Request:
+                                    GET /api/products?query=1%27%20OR%201%20=%201-- HTTP/1.1
+                                    Host: example.com
+
+                                    Response:
+                                    HTTP/1.1 200 OK
+                                    Content-Type: application/json
+                                    {"message":"Successfully fetched products!","data":[...]}
+                                    ''')
+memory.chat_memory.add_ai_message('''### Vulnerability Title:
+SQL Injection Vulnerability in Product Search API
+
+### Severity:
+High
+
+### Description:
+A SQL injection vulnerability was identified in the search product API, allowing unauthorized database query manipulation through the API endpoint.
+
+### Proof of Concept:
+- **Request:**
+```
+GET /api/products?query=1%27%20OR%201%20=%201-- HTTP/1.1
+Host: example.com
+```
+- **Response:**
+```
+HTTP/1.1 200 OK
+Content-Type: application/json
+{"message":"Successfully fetched products!","data":[...]}
+```
+
+### CWE:
+CWE-89
+                                  
+### Remediation:
+Use parameterized queries or prepared statements to prevent SQL injection.
+''')
 
 from langchain_community.llms import Ollama
 model = Ollama(model="lily")
 
 from langchain.chains import LLMChain
-# Create an LLMChain to generate Markdown formatted reports
+# Create an LLMChain to generate Markdown formatted reports, retaining conversation context
 report_chain = LLMChain(llm=model, prompt=report_template, verbose=True, output_key='markdown_report', memory=memory)
 
-# Check input and display the formatted report if sufficient, otherwise notify the user
 if input_findings:
     if check_input_sufficiency(input_findings):
         markdown_report = report_chain.run(findings=input_findings)
         st.markdown(markdown_report, unsafe_allow_html=True)
     else:
-        st.error("Information is not sufficient. Please provide a complete finding including a short description, HTTP request, and HTTP response as follows:\n"
+        st.error("Information is not sufficient. Please provide more information with this format: \n"
                  "- Short description about the vulnerability,\n"
                  "- HTTP request,\n"
                  "- HTTP response.\n\n"

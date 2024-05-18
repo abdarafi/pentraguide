@@ -18,20 +18,11 @@ else:
 
 st.title("PentraGuide - Penetration Testing Assistant")
 
-# Text input from the user (penetration tester)
 input_findings = st.text_area(
     "Enter your findings:",
     height=300,
     placeholder='Example: found SQL injection in the search product API.\n```\nGET /api/products?query=1%27%20OR%201%20=%201-- HTTP/1.1\nHost: example.com\n...\n\nHTTP/1.1 200 OK\nContent-Type: application/json\n...\n{"message":"Successfully fetched products!","data":[...]}\n```',
 )
-
-
-# def check_input_sufficiency(input_text):
-#     required_elements = ["description", "request", "response"]
-#     if all(element in input_text.lower() for element in required_elements):
-#         return True
-#     return False
-
 
 from langchain.prompts import PromptTemplate
 
@@ -77,7 +68,7 @@ validation_chain = LLMChain(
 
 if input_findings:
     validation_feedback = validation_chain.run(findings=input_findings)
-    print(validation_feedback)
+    print("[debug]: model validator response:\n", validation_feedback)
     if "insufficient" in validation_feedback.lower():
         match = re.search(r'\*\*Feedback\*\*:\s*(.*)', validation_feedback)
         if match:
@@ -101,7 +92,6 @@ if input_findings:
             "```"
         )
     else:
-        # Setting up the prompt template for report generation
         report_template = PromptTemplate(
             input_variables=["findings"],
             template="""
@@ -152,7 +142,6 @@ if input_findings:
         """,
         )
 
-        # LLMChain for report generation
         report_chain = LLMChain(
             llm=model,
             prompt=report_template,
@@ -161,7 +150,6 @@ if input_findings:
         )
 
         markdown_report = report_chain.run(findings=input_findings)
-        # debugging weird multiple requests to model
-        print(markdown_report)
+        print("[debug]: model response:\n", markdown_report)
         print("length", len(markdown_report))
         st.markdown(markdown_report)

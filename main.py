@@ -21,7 +21,8 @@ st.title("PentraGuide - Penetration Testing Assistant")
 
 project_name = st.text_input("Project Name")
 scope = st.text_area("Scope of Testing", height=100)
-testing_dates = st.date_input("Testing Dates")
+start_date = st.date_input("Start Date")
+end_date = st.date_input("End Date")
 client_name = st.text_input("Client Name")
 
 if "findings" not in st.session_state:
@@ -29,6 +30,9 @@ if "findings" not in st.session_state:
 
 if "model_responses" not in st.session_state:
     st.session_state["model_responses"] = []
+    
+if "loading" not in st.session_state:
+    st.session_state["loading"] = False
 
 if st.session_state["findings"]:
     st.subheader("Submitted Findings")
@@ -44,7 +48,10 @@ input_findings = st.text_area(
     placeholder='Example: found SQL injection in the search product API.\n```\nGET /api/products?query=1%27%20OR%201%20=%201-- HTTP/1.1\nHost: example.com\n...\n\nHTTP/1.1 200 OK\nContent-Type: application/json\n...\n{"message":"Successfully fetched products!","data":[...]}\n```',
 )
 
-if st.button("Submit Finding"):
+submit_button = st.button("Submit Finding", disabled=st.session_state["loading"])
+
+if submit_button:
+    st.session_state["loading"] = True
     from langchain.prompts import PromptTemplate
 
     validation_template = PromptTemplate(
@@ -176,20 +183,22 @@ if st.button("Submit Finding"):
             st.session_state["model_responses"].append(markdown_report)
             st.session_state["findings"].append(input_findings)
             st.success("Finding added successfully!")
+    st.session_state["loading"] = False
 
-if st.button("Download Report"):
-    if st.session_state["findings"] and st.session_state["model_responses"]:
-        report_content = f"# {project_name}\n\n"
-        report_content += f"**Client Name:** {client_name}\n"
-        report_content += f"**Testing Dates:** {testing_dates}\n"
-        report_content += f"**Scope of Testing:**\n{scope}\n\n"
-        report_content += "## Findings\n"
+if st.session_state["findings"] and st.session_state["model_responses"]:
+    if st.button("Download Report"):
+        if st.session_state["findings"] and st.session_state["model_responses"]:
+            report_content = f"# {project_name}\n\n"
+            report_content += f"**Presented to:** {client_name}\n\n"
+            report_content += f"**Testing Dates:** {start_date} to {end_date}\n"
+            report_content += f"**Scope of Testing:**\n{scope}\n\n\n"
+            report_content += "## Findings\n\n"
 
-        for idx, finding in enumerate(st.session_state["findings"], 1):
-            report_content += f"### Finding {idx}\n"
-            report_content += st.session_state["model_responses"][idx - 1]
-            report_content += "\n\n"
+            for idx, finding in enumerate(st.session_state["findings"], 1):
+                report_content += f"### Finding {idx}\n"
+                report_content += st.session_state["model_responses"][idx - 1]
+                report_content += "\n\n"
 
-        b64 = base64.b64encode(report_content.encode()).decode()
-        href = f'<a href="data:file/markdown;base64,{b64}" download="pentest_report.md">Download Markdown Report</a>'
-        st.markdown(href, unsafe_allow_html=True)
+            b64 = base64.b64encode(report_content.encode()).decode()
+            href = f'<a href="data:file/markdown;base64,{b64}" download="pentest_report.md">Download Markdown Report</a>'
+            st.markdown(href, unsafe_allow_html=True)

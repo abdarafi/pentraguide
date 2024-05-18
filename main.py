@@ -1,4 +1,20 @@
+from dotenv import load_dotenv
+import os
+import re
 import streamlit as st
+from langchain_community.llms import Ollama
+
+load_dotenv()
+gpt = bool(os.getenv("USE_GPT", "false").lower() in ("true", "1", "t"))
+
+if gpt:
+    from langchain.llms import OpenAI
+
+    api_key = os.getenv("OPENAI_API_KEY")
+    model = OpenAI(api_key=api_key)
+else:
+    model = Ollama(model="lily")
+
 
 st.title("PentraGuide - Penetration Testing Assistant")
 
@@ -10,142 +26,65 @@ input_findings = st.text_area(
 )
 
 
-def check_input_sufficiency(input_text):
-    required_elements = ["description", "request", "response"]
-    if all(element in input_text.lower() for element in required_elements):
-        return True
-    return False
+# def check_input_sufficiency(input_text):
+#     required_elements = ["description", "request", "response"]
+#     if all(element in input_text.lower() for element in required_elements):
+#         return True
+#     return False
 
 
 from langchain.prompts import PromptTemplate
 
-# Setting up the prompt template for report generation
-report_template = PromptTemplate(
+# Prompt template for input validation
+validation_template = PromptTemplate(
     input_variables=["findings"],
     template="""
-### Instructions:
-Please generate a Markdown formatted report based on the input findings provided below. Ensure the response is structured as illustrated in the example.
+### Instruction:
+Act as a penetration testing report generator. Your job is to review the following penetration test findings and validate their sufficiency based on the input findings provided in the Input section below. The findings should include three main components: a short description, an HTTP request, and an HTTP response. 
 
-### Input Findings:
+### Input:
 {findings}
 
-### Expected Markdown Format:
-**Vulnerability Title:** [Extract and infer from findings]
-**Severity:** [Infer from findings]
-**Description:** [Detailed description extracted from findings]
-**CWE:** [Find the suitable CWE code for the findings]
-**Remediation:** [Suggest possible remediations based on common practices]
-**Proof of Concept:**
-- **Request:** [Extract and display request from findings]
-- **Response:** [Extract and display response from findings]
+### Validation Criteria:
+1. **Description**: A brief overview of the vulnerability.
+2. **HTTP Request**: The exact HTTP request used to identify the vulnerability.
+3. **HTTP Response**: The HTTP response received that demonstrates the vulnerability.
 
-### Example Format:
-**Vulnerability Title:**
-SQL Injection Vulnerability in Product Search API
-**Severity:**
-High
-**Description:**
-A SQL injection vulnerability was identified in the search product API, allowing unauthorized database query manipulation through the API endpoint.
+### Validation Output:
+- **Status**: Sufficient or Insufficient
+- **Feedback**: If any component is missing, incomplete, or redundant, specify which parts are missing or provide clear feedback on what additional information is needed or which parts are redundant.
 
-**Proof of Concept:**
-- **Request:**
-  ```
-  GET /api/products?query=1%27%20OR%201%20=%201-- HTTP/1.1
-  Host: example.com
-  ```
-- **Response:**
-  ```
-  HTTP/1.1 200 OK
-  Content-Type: application/json
-  {{"message":"Successfully fetched products!", "data":[...]}}
-  ```
+### Response Example:
+**Status**: Insufficient
+**Feedback**: The findings are missing the HTTP response. Please include the full HTTP response to demonstrate the vulnerability.
 
-**CWE:**
-CWE-89
+**Status**: Insufficient
+**Feedback**: The findings are redundant. Multiple findings indicate the same issue without additional unique information. Consolidate into a single, detailed finding.
 
-**Remediation:**
-Use parameterized queries or prepared statements to prevent SQL injection.
-
-### Please format your response to match the example provided above.
+**Status**: Sufficient
+**Feedback**: All required components are present. Proceed to the next step.
 """,
 )
 
-# from langchain.memory import ConversationBufferMemory
-
-# memory = ConversationBufferMemory()
-# memory.chat_memory.add_user_message(
-#     """
-#                                     Description: I found a SQL Injection Vulnerability on the search page.
-
-#                                     Request:
-#                                     GET /api/products?query=1%27%20OR%201%20=%201-- HTTP/1.1
-#                                     Host: example.com
-
-#                                     Response:
-#                                     HTTP/1.1 200 OK
-#                                     Content-Type: application/json
-#                                     {"message":"Successfully fetched products!","data":[...]}
-#                                     """
-# )
-# memory.chat_memory.add_ai_message(
-#     """
-# ### Vulnerability Title:
-# SQL Injection Vulnerability in Product Search API
-
-# ### Severity:
-# High
-
-# ### Description:
-# A SQL injection vulnerability was identified in the search product API, allowing unauthorized database query manipulation through the API endpoint.
-
-# ### Proof of Concept:
-# - **Request:**
-# ```
-# GET /api/products?query=1%27%20OR%201%20=%201-- HTTP/1.1
-# Host: example.com
-# ```
-# - **Response:**
-# ```
-# HTTP/1.1 200 OK
-# Content-Type: application/json
-# {"message":"Successfully fetched products!","data":[...]}
-# ```
-
-# ### CWE:
-# CWE-89
-
-# ### Remediation:
-# Use parameterized queries or prepared statements to prevent SQL injection.
-# """
-# )
-
-# from langchain_community.llms import Ollama
-# model = Ollama(model="lily")
-
-from langchain_core.prompts import PromptTemplate
-from langchain_openai import OpenAI
-
-api_key = "sk-proj-asfd"
-model = OpenAI(api_key=api_key)
-
 from langchain.chains import LLMChain
 
-# Create an LLMChain to generate Markdown formatted reports, retaining conversation context
-report_chain = LLMChain(
+validation_chain = LLMChain(
     llm=model,
-    prompt=report_template,
+    prompt=validation_template,
     verbose=True,
-    output_key="markdown_report",
-    # memory=memory,
+    output_key="validation_feedback",
 )
 
 if input_findings:
-    if check_input_sufficiency(input_findings):
-        markdown_report = report_chain.run(findings=input_findings)
-        st.markdown(markdown_report, unsafe_allow_html=True)
-    else:
+    validation_feedback = validation_chain.run(findings=input_findings)
+    print(validation_feedback)
+    if "insufficient" in validation_feedback.lower():
+        match = re.search(r'\*\*Feedback\*\*:\s*(.*)', validation_feedback)
+        if match:
+            validation_feedback = match.group(1)
+        st.error(validation_feedback)
         st.error(
-            "Information is not sufficient. Please provide more information with this format: \n"
+            "Please provide your input with this format: \n"
             "- Short description about the vulnerability,\n"
             "- HTTP request,\n"
             "- HTTP response.\n\n"
@@ -161,3 +100,68 @@ if input_findings:
             '{"message":"Successfully fetched products!","data":[...]}\n'
             "```"
         )
+    else:
+        # Setting up the prompt template for report generation
+        report_template = PromptTemplate(
+            input_variables=["findings"],
+            template="""
+        ### Instruction:
+        I want you to act as a penetration testing report generator. Your job is to generate a Markdown formatted report based on the input findings provided in the Input section below. Ensure the response is structured as illustrated in the example.
+
+        ### Input:
+        {findings}
+
+        ### Expected Markdown Format:
+        **Vulnerability Title:** [Extract and infer from findings]
+        **Severity:** [Infer from findings]
+        **Description:** [Detailed description extracted from findings]
+        **CWE:** [Find the suitable CWE code for the findings]
+        **Remediation:** [Suggest possible remediations based on common practices]
+        **Proof of Concept:**
+        - **Request:** [Extract and display request from findings]
+        - **Response:** [Extract and display response from findings]
+
+        ### Response Example:
+        **Vulnerability Title:**
+        SQL Injection Vulnerability in Product Search API
+        **Severity:**
+        High
+        **Description:**
+        A SQL injection vulnerability was identified in the search product API, allowing unauthorized database query manipulation through the API endpoint.
+
+        **Proof of Concept:**
+        - **Request:**
+        ```
+        GET /api/products?query=1%27%20OR%201%20=%201-- HTTP/1.1
+        Host: example.com
+        ```
+        - **Response:**
+        ```
+        HTTP/1.1 200 OK
+        Content-Type: application/json
+        {{"message":"Successfully fetched products!", "data":[...]}}
+        ```
+
+        **CWE:**
+        CWE-89
+
+        **Remediation:**
+        Use parameterized queries or prepared statements to prevent SQL injection.
+
+        ### Please format your response to match the example provided above.
+        """,
+        )
+
+        # LLMChain for report generation
+        report_chain = LLMChain(
+            llm=model,
+            prompt=report_template,
+            verbose=True,
+            output_key="markdown_report",
+        )
+
+        markdown_report = report_chain.run(findings=input_findings)
+        # debugging weird multiple requests to model
+        print(markdown_report)
+        print("length", len(markdown_report))
+        st.markdown(markdown_report)

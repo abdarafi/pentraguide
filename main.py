@@ -3,6 +3,7 @@ import os
 import re
 import streamlit as st
 from langchain_community.llms import Ollama
+import base64
 
 load_dotenv()
 gpt = bool(os.getenv("USE_GPT", "false").lower() in ("true", "1", "t"))
@@ -23,14 +24,19 @@ scope = st.text_area("Scope of Testing", height=100)
 testing_dates = st.date_input("Testing Dates")
 client_name = st.text_input("Client Name")
 
-if 'findings' not in st.session_state:
-    st.session_state['findings'] = []
+if "findings" not in st.session_state:
+    st.session_state["findings"] = []
 
-if st.session_state['findings']:
+if "model_responses" not in st.session_state:
+    st.session_state["model_responses"] = []
+
+if st.session_state["findings"]:
     st.subheader("Submitted Findings")
-    for idx, finding in enumerate(st.session_state['findings'], 1):
+    for idx, finding in enumerate(st.session_state["findings"], 1):
         st.markdown(f"**Finding {idx}:**")
         st.text(finding)
+        st.markdown(f"**Model Response {idx}:**")
+        st.markdown(st.session_state["model_responses"][idx - 1])
 
 input_findings = st.text_area(
     "Enter your findings:",
@@ -84,7 +90,7 @@ if st.button("Submit Finding"):
         validation_feedback = validation_chain.run(findings=input_findings)
         print("[debug]: model validator response:\n", validation_feedback)
         if "insufficient" in validation_feedback.lower():
-            match = re.search(r'\*\*Feedback\*\*:\s*(.*)', validation_feedback)
+            match = re.search(r"\*\*Feedback\*\*:\s*(.*)", validation_feedback)
             if match:
                 validation_feedback = match.group(1)
             st.error(validation_feedback)
@@ -167,6 +173,23 @@ if st.button("Submit Finding"):
             print("[debug]: model response:\n", markdown_report)
             print("length", len(markdown_report))
             st.markdown(markdown_report)
-            st.session_state['findings'].append(input_findings)
+            st.session_state["model_responses"].append(markdown_report)
+            st.session_state["findings"].append(input_findings)
             st.success("Finding added successfully!")
 
+if st.button("Download Report"):
+    if st.session_state["findings"] and st.session_state["model_responses"]:
+        report_content = f"# {project_name}\n\n"
+        report_content += f"**Client Name:** {client_name}\n"
+        report_content += f"**Testing Dates:** {testing_dates}\n"
+        report_content += f"**Scope of Testing:**\n{scope}\n\n"
+        report_content += "## Findings\n"
+
+        for idx, finding in enumerate(st.session_state["findings"], 1):
+            report_content += f"### Finding {idx}\n"
+            report_content += st.session_state["model_responses"][idx - 1]
+            report_content += "\n\n"
+
+        b64 = base64.b64encode(report_content.encode()).decode()
+        href = f'<a href="data:file/markdown;base64,{b64}" download="pentest_report.md">Download Markdown Report</a>'
+        st.markdown(href, unsafe_allow_html=True)

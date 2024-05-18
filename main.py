@@ -26,9 +26,6 @@ client_name = st.text_input("Client Name")
 if 'findings' not in st.session_state:
     st.session_state['findings'] = []
 
-if 'markdown_report' not in st.session_state:
-    st.session_state['markdown_report'] = ""
-
 if st.session_state['findings']:
     st.subheader("Submitted Findings")
     for idx, finding in enumerate(st.session_state['findings'], 1):
